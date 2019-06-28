@@ -145,14 +145,13 @@ const createPdf = async () => {
         doc.image(path, x, y, {
             width: cardWidth,
             height: cardHeight
-
         })
         x += cardWidth + spacing
-        if ((i + 1) % 6 === 0) {
+        if ((i + 1) % cardsPerRow === 0) {
             y += cardHeight + spacing
             x = spacing
         }
-        if ((i + 1) % 18 === 0) {
+        if ((i + 1) % cardsPerPage === 0) {
             current += 2
             x = spacing
             y = spacing
