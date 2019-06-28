@@ -67,48 +67,134 @@ const download = async () => {
 }
 
 const createPdf = async () => {
-    new Promise((resolve, reject) => {
-        getCards('https://api.scryfall.com/cards/search?q=cube:vintage', [], resolve, reject)
-    })
-        .then(async response => {{
-            const doc = new pdf({
-                layout: 'landscape',
-                size: [
-                    toPixels(12),
-                    toPixels(18)
-                ],
-                margin: 0
-            })
-            doc.pipe(fs.createWriteStream('output.pdf'))
 
-            doc.rect(0, 0, toPixels(18), toPixels(12)).fill('#000000')
+    const drawLines = () => {
+        const horiLines = rowsPerPage * 2
+        const vertLines = cardsPerRow * 2
 
-            let x = y = toPixels(.4)
+        let xLoc = spacing
+        let yLoc = spacing
 
-            for (let i = 0; i < response.length - 516; i++) {
-                const card = response[i]
-                let path = 'cards/' + slugify(card.name) + '.front.png'
-                // let img = 'data:image/png;base64,'+ Base64.encode(path)
-                doc.image(path, x, y, {
-                    width: toPixels(2.5),
-                    height: toPixels(3.5),
-                    align: 'left'
+        doc.lineWidth(1)
+        doc.fillColor('#ffffff')
+        doc.strokeColor('#ffffff')
 
-                })
-                x += toPixels(2.5 + .4)
-                if ((i + 1) % 6 === 0) {
-                    y += toPixels(3.5 + .4)
-                    x = toPixels(.4)
-                }
-                // if ((i + 1) % 18 === 0) {
-                //     doc.addPage()
-                //     doc.rect(0, 0, toPixels(18), toPixels(12)).fill('#000000')
-                //     x = toPixels(.4)
-                //     y = toPixels(.4)
-                // }
+        for (let i = 0; i < horiLines; i++) {
+            doc.moveTo(0, yLoc).lineTo(pageWidth, yLoc).stroke()
+            if (i % 2 === 0) {
+                yLoc += cardHeight
+            } else {
+                yLoc += spacing
             }
-            doc.end()
-        }})
+        }
+
+        for (let i = 0; i < vertLines; i++) {
+            doc.moveTo(xLoc, 0).lineTo(xLoc, pageHeight).stroke()
+            if (i % 2 === 0) {
+                xLoc += cardWidth
+            } else {
+                xLoc += spacing
+            }
+        }
+    }
+
+    let cards = JSON.parse(fs.readFileSync('vintage-cube.json'))
+
+    const pageHeight = toPixels(12)
+    const pageWidth = toPixels(18)
+    const cardWidth = toPixels(2.5)
+    const cardHeight = toPixels(3.5)
+    const spacing = toPixels(.4)
+    const rowsPerPage = 3
+    const cardsPerRow = 6
+    const cardsPerPage = 18
+    const pages = (Math.ceil(cards.length / cardsPerPage) * 2) - 1
+    let current = 0
+
+    const doc = new pdf({
+        layout: 'landscape',
+        size: [
+            pageHeight,
+            pageWidth
+        ],
+        margin: 0,
+        bufferPages: true
+    })
+
+    doc.pipe(fs.createWriteStream('output.pdf'))
+
+    doc.on('pageAdded', () => {
+        doc.rect(0, 0, pageWidth, pageHeight).fill('#000000')
+        drawLines(doc)
+    })
+
+    doc.rect(0, 0, pageWidth, pageHeight).fill('#000000')
+    drawLines(doc)
+
+    for (let i = 0; i < pages; i++) {
+        doc.addPage()
+    }
+
+    doc.switchToPage(current)
+
+    let x = y = spacing
+
+    for (let i = 0; i < cards.length; i++) {
+        const card = cards[i]
+        let path = 'cards/' + slugify(card.name) + '.front.png'
+        doc.image(path, x, y, {
+            width: cardWidth,
+            height: cardHeight
+
+        })
+        x += cardWidth + spacing
+        if ((i + 1) % 6 === 0) {
+            y += cardHeight + spacing
+            x = spacing
+        }
+        if ((i + 1) % 18 === 0) {
+            current += 2
+            x = spacing
+            y = spacing
+            if (current <= pages) {
+                doc.switchToPage(current)
+            }
+        }
+    }
+
+    x = spacing
+    y = spacing
+    current = 1
+    doc.switchToPage(current)
+
+    for (let i = 0; i < cards.length; i++) {
+        const card = cards[i]
+        let path = 'card-back.jpg'
+        if (card.layout == 'transform') {
+            path = 'cards/' + slugify(card.name) + '.back.png'
+        }
+        doc.image(path, x, y, {
+            width: cardWidth,
+            height: cardHeight
+
+        })
+        x += cardWidth + spacing
+        if ((i + 1) % 6 === 0) {
+            y += cardHeight + spacing
+            x = spacing
+        }
+        if ((i + 1) % 18 === 0) {
+            current += 2
+            x = spacing
+            y = spacing
+            if (current <= pages) {
+                doc.switchToPage(current)
+            }
+        }
+    }
+
+    doc.end()
 }
 
 createPdf()
+// download()
