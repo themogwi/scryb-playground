@@ -3,6 +3,27 @@ const axios = require('axios')
 const slugify = require('slugify')
 const pdf = require('pdfkit')
 
+const imgSizes = {
+    png: {
+        key: 'png',
+        ext: 'png'
+    },
+    normal: {
+        key: 'normal',
+        ext: 'jpg'
+    },
+    border_crop: {
+        key: 'border_crop',
+        ext: 'jpg'
+    }
+}
+
+/**
+ * Set to scryfall imagery size needed
+ */
+const imgSize = imgSizes.normal
+
+
 const toPixels = (inches) => {
     return inches * 72
 }
@@ -30,8 +51,9 @@ const download = async () => {
         .then(async response => {{
             for (let i = 0; i < response.length; i++) {
                 const card = response[i]
-                let path = 'cards/' + slugify(card.name) + '.front.png'
-                let url = (card.image_uris || (card.card_faces && card.card_faces[0].image_uris)).png
+                let path = `cards/${imgSize.key}/`
+                let filename = `${slugify(card.name)}.front.${imgSize.ext}`
+                let url = (card.image_uris || (card.card_faces && card.card_faces[0].image_uris))[imgSize.key]
                 console.log(`Downloading card front for ${card.name}...`)
                 await axios({
                     url,
@@ -40,14 +62,14 @@ const download = async () => {
                     response =>
                         new Promise((resolve, reject) => {
                             response.data
-                            .pipe(fs.createWriteStream(path))
+                            .pipe(fs.createWriteStream(path + filename))
                             .on('finish', () => resolve())
                             .on('error', e => reject(e))
                         }),
                 )
                 if (card.layout === 'transform') {
-                    let path = 'cards/' + slugify(card.name) + '.back.png'
-                    let url = card.card_faces[1].image_uris.png
+                    let filename = `${slugify(card.name)}.back.${imgSize.ext}`
+                    let url = card.card_faces[1].image_uris[imgSize.key]
                     console.log(`Downloading card back for ${card.name}...`)
                     await axios({
                         url,
@@ -56,7 +78,7 @@ const download = async () => {
                         response =>
                             new Promise((resolve, reject) => {
                                 response.data
-                                .pipe(fs.createWriteStream(path))
+                                .pipe(fs.createWriteStream(path + filename))
                                 .on('finish', () => resolve())
                                 .on('error', e => reject(e))
                             }),
@@ -109,6 +131,10 @@ const createPdf = async () => {
     const cardsPerRow = 6
     const cardsPerPage = 18
     const pages = (Math.ceil(cards.length / cardsPerPage) * 2) - 1
+
+    // Need to start card backs from the opposite side
+    const backStartX = pageWidth - (pageWidth - (cardWidth + spacing) * cardsPerRow) - cardWidth
+
     let current = 0
 
     const doc = new pdf({
@@ -121,7 +147,7 @@ const createPdf = async () => {
         bufferPages: true
     })
 
-    doc.pipe(fs.createWriteStream('output.pdf'))
+    doc.pipe(fs.createWriteStream(`output-${imgSize.key}.pdf`))
 
     doc.on('pageAdded', () => {
         doc.rect(0, 0, pageWidth, pageHeight).fill('#000000')
@@ -141,7 +167,7 @@ const createPdf = async () => {
 
     for (let i = 0; i < cards.length; i++) {
         const card = cards[i]
-        let path = 'cards/' + slugify(card.name) + '.front.png'
+        let path = `cards/${imgSize.key}/${slugify(card.name)}.front.${imgSize.ext}`
         doc.image(path, x, y, {
             width: cardWidth,
             height: cardHeight
@@ -161,7 +187,7 @@ const createPdf = async () => {
         }
     }
 
-    x = spacing
+    x = backStartX
     y = spacing
     current = 1
     doc.switchToPage(current)
@@ -170,21 +196,21 @@ const createPdf = async () => {
         const card = cards[i]
         let path = 'card-back.jpg'
         if (card.layout == 'transform') {
-            path = 'cards/' + slugify(card.name) + '.back.png'
+            path = `cards/${imgSize.key}/${slugify(card.name)}.back.${imgSize.ext}`
         }
         doc.image(path, x, y, {
             width: cardWidth,
             height: cardHeight
 
         })
-        x += cardWidth + spacing
+        x -= (cardWidth + spacing)
         if ((i + 1) % 6 === 0) {
             y += cardHeight + spacing
-            x = spacing
+            x = backStartX
         }
         if ((i + 1) % 18 === 0) {
             current += 2
-            x = spacing
+            x = backStartX
             y = spacing
             if (current <= pages) {
                 doc.switchToPage(current)
