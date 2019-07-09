@@ -1,4 +1,8 @@
 node_modules/
-cards/*
-!cards/.gitkeep
-output.pdf
+cards/png/*
+cards/normal/*
+cards/border_crop/*
+!cards/png/.gitkeep
+!cards/normal/.gitkeep
+!cards/border_crop/.gitkeep
+output*.pdf
