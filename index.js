@@ -21,7 +21,7 @@ const imgSizes = {
 /**
  * Set to scryfall imagery size needed
  */
-const imgSize = imgSizes.normal
+const imgSize = imgSizes.border_crop
 
 
 const toPixels = (inches) => {
@@ -91,32 +91,26 @@ const download = async () => {
 const createPdf = async () => {
 
     const drawLines = () => {
-        const horiLines = rowsPerPage * 2
-        const vertLines = cardsPerRow * 2
+        const horiLines = rowsPerPage
+        const vertLines = cardsPerRow
 
-        let xLoc = spacing
-        let yLoc = spacing
+        let x = spacing + (cardWidth / 2)
+        let y = spacing + (cardHeight / 2)
 
-        doc.lineWidth(1)
-        doc.fillColor('#ffffff')
-        doc.strokeColor('#ffffff')
+        doc.lineWidth(cardHeight)
+        doc.fillColor('#000000')
+        doc.strokeColor('#000000')
 
         for (let i = 0; i < horiLines; i++) {
-            doc.moveTo(0, yLoc).lineTo(pageWidth, yLoc).stroke()
-            if (i % 2 === 0) {
-                yLoc += cardHeight
-            } else {
-                yLoc += spacing
-            }
+            doc.moveTo(0, y).lineTo(pageWidth, y).stroke()
+            y += spacing + cardHeight
         }
 
+        doc.lineWidth(cardWidth)
+
         for (let i = 0; i < vertLines; i++) {
-            doc.moveTo(xLoc, 0).lineTo(xLoc, pageHeight).stroke()
-            if (i % 2 === 0) {
-                xLoc += cardWidth
-            } else {
-                xLoc += spacing
-            }
+            doc.moveTo(x, 0).lineTo(x, pageHeight).stroke()
+            x += spacing + cardWidth
         }
     }
 
@@ -150,11 +144,9 @@ const createPdf = async () => {
     doc.pipe(fs.createWriteStream(`output-${imgSize.key}.pdf`))
 
     doc.on('pageAdded', () => {
-        doc.rect(0, 0, pageWidth, pageHeight).fill('#000000')
         drawLines(doc)
     })
 
-    doc.rect(0, 0, pageWidth, pageHeight).fill('#000000')
     drawLines(doc)
 
     for (let i = 0; i < pages; i++) {
