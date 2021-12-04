@@ -21,11 +21,18 @@ const imgSizes = {
 /**
  * Set to scryfall imagery size needed
  */
-const imgSize = imgSizes.border_crop
+const imgSize = imgSizes.png
 
 
 const toPixels = (inches) => {
     return inches * 72
+}
+
+const getList = () => {
+    const filename = process.argv[3]
+    return fs.readFileSync(filename, 'utf-8')
+        .split('\n')
+        .filter(Boolean)
 }
 
 const getCards = (url, cards, resolve, reject) => {
@@ -45,8 +52,53 @@ const getCards = (url, cards, resolve, reject) => {
 }
 
 const download = async () => {
-    new Promise((resolve, reject) => {
-        getCards('https://api.scryfall.com/cards/search?q=cube:vintage', [], resolve, reject)
+    new Promise( async (resolve, reject) => {
+        const list = getList()
+        let cards = []
+        let output = []
+
+        for (let i = 0; i < list.length; i++) {
+            const line = list[i]
+            let quantity = line.substr(0, line.indexOf(' '))
+            let name = false
+            let set = false
+            let url = false
+
+            if (line.includes('[')) {
+                name = line.substr(line.indexOf('] ')+2)
+                set = line.substring(line.indexOf('[')+1, line.indexOf(':'))
+                url = `https://api.scryfall.com/cards/named?set=${set.toLowerCase()}&exact="${name}"`
+            } else {
+                name = line.substr(line.indexOf(' ')+1)
+                url = `https://api.scryfall.com/cards/named?exact="${name}"`
+            }
+
+            console.log(`Retrieving "${name}" from scryfall... \t ${url}`)
+
+            let card = await axios.get(url)
+                .then(response => {
+                    return response.data
+                })
+                .catch(error => {
+                    console.log(error)
+                    reject(`Something went wrong while fetching the single card... ${url}`)
+                })
+
+            cards.push(card)
+            for (let i = quantity; i !== 0; i--) {
+                output.push(card)
+            }
+        }
+
+        await fs.writeFile('lists/list.json', JSON.stringify(output), (err) => {
+            if (err) {
+                console.error(err)
+                return
+            }
+            console.log('Created list.json!')
+        })
+
+        resolve(cards)
     })
         .then(async response => {{
             for (let i = 0; i < response.length; i++) {
@@ -54,7 +106,7 @@ const download = async () => {
                 let path = `cards/${imgSize.key}/`
                 let filename = `${slugify(card.name)}.front.${imgSize.ext}`
                 let url = (card.image_uris || (card.card_faces && card.card_faces[0].image_uris))[imgSize.key]
-                console.log(`Downloading card front for ${card.name}...`)
+                console.log(`Downloading card front for "${card.name}"...`)
                 await axios({
                     url,
                     responseType: 'stream',
@@ -114,17 +166,18 @@ const createPdf = async () => {
         }
     }
 
-    let cards = JSON.parse(fs.readFileSync('vintage-cube.json'))
+    let cards = JSON.parse(fs.readFileSync('lists/list.json'))
 
+    const includeBacks = true
     const pageHeight = toPixels(12)
     const pageWidth = toPixels(18)
-    const cardWidth = toPixels(2.5)
-    const cardHeight = toPixels(3.5)
-    const spacing = toPixels(.4)
+    const cardWidth = toPixels(2.48)
+    const cardHeight = toPixels(3.46)
     const rowsPerPage = 3
     const cardsPerRow = 6
     const cardsPerPage = 18
-    const pages = (Math.ceil(cards.length / cardsPerPage) * 2) - 1
+    const spacing = (pageWidth - cardWidth * cardsPerRow) / (cardsPerRow + 1)
+    const pages = (Math.ceil(cards.length / cardsPerPage) * (includeBacks ? 2 : 1)) - 1
 
     // Need to start card backs from the opposite side
     const backStartX = pageWidth - (pageWidth - (cardWidth + spacing) * cardsPerRow) - cardWidth
@@ -170,7 +223,7 @@ const createPdf = async () => {
             x = spacing
         }
         if ((i + 1) % cardsPerPage === 0) {
-            current += 2
+            current += includeBacks ? 2 : 1
             x = spacing
             y = spacing
             if (current <= pages) {
@@ -179,33 +232,35 @@ const createPdf = async () => {
         }
     }
 
-    x = backStartX
-    y = spacing
-    current = 1
-    doc.switchToPage(current)
+    if (includeBacks) {
+        x = backStartX
+        y = spacing
+        current = 1
+        doc.switchToPage(current)
 
-    for (let i = 0; i < cards.length; i++) {
-        const card = cards[i]
-        let path = 'card-back.jpg'
-        if (card.layout == 'transform') {
-            path = `cards/${imgSize.key}/${slugify(card.name)}.back.${imgSize.ext}`
-        }
-        doc.image(path, x, y, {
-            width: cardWidth,
-            height: cardHeight
+        for (let i = 0; i < cards.length; i++) {
+            const card = cards[i]
+            let path = 'card-back.jpg'
+            if (card.layout == 'transform') {
+                path = `cards/${imgSize.key}/${slugify(card.name)}.back.${imgSize.ext}`
+            }
+            doc.image(path, x, y, {
+                width: cardWidth,
+                height: cardHeight
 
-        })
-        x -= (cardWidth + spacing)
-        if ((i + 1) % 6 === 0) {
-            y += cardHeight + spacing
-            x = backStartX
-        }
-        if ((i + 1) % 18 === 0) {
-            current += 2
-            x = backStartX
-            y = spacing
-            if (current <= pages) {
-                doc.switchToPage(current)
+            })
+            x -= (cardWidth + spacing)
+            if ((i + 1) % 6 === 0) {
+                y += cardHeight + spacing
+                x = backStartX
+            }
+            if ((i + 1) % 18 === 0) {
+                current += 2
+                x = backStartX
+                y = spacing
+                if (current <= pages) {
+                    doc.switchToPage(current)
+                }
             }
         }
     }
@@ -213,5 +268,13 @@ const createPdf = async () => {
     doc.end()
 }
 
-createPdf()
-// download()
+
+const action = process.argv[2]
+
+if (action === 'download') {
+    download()
+}
+
+if (action === 'pdf') {
+    createPdf()
+}
